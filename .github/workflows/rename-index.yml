@@ -1,0 +1,31 @@
+name: Auto-rename HTML under archive/ to index.html
+
+on:
+  push:
+    paths:
+      - 'archive/**/*.html'
+
+permissions:
+  contents: write
+
+jobs:
+  rename-archive-files:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find and rename non-index HTML files in archive/
+        run: |
+          # Find all .html files inside archive/ recursively that are NOT already named index.html
+          find archive -type f -name "*.html" ! -name "index.html" | while read -r file; do
+            dir=$(dirname "$file")
+            echo "Renaming '$file' -> '$dir/index.html'"
+            mv "$file" "$dir/index.html"
+          done
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "auto: rename uploaded html file to index.html"
+          file_pattern: 'archive/**'
