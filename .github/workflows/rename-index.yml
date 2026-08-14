@@ -1,10 +1,9 @@
-name: Auto-rename HTML under archive/ to index.html
+html': Auto-rename HTML under archive/ to index.html
 
 on:
   push:
     paths:
-      - 'archive/*.html'
-      - 'archive/**/*.html'
+      - 'archive/**.html'
 
 permissions:
   contents: write
