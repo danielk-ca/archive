@@ -2,30 +2,67 @@ name: Auto-rename HTML under archive/ to index.html
 
 on:
   push:
+    branches:
+      - main
     paths:
-      - 'archive/**.html'
+      - 'archive/**/*.html'
 
 permissions:
   contents: write
 
+concurrency:
+  group: rename-archive-files-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rename-archive-files:
+    # avoid re-running the job when the commit was made by the workflow itself
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Find and rename non-index HTML files in archive/
+        shell: bash
         run: |
-          # Find all .html files inside archive/ recursively that are NOT already named index.html
-          find archive -type f -name "*.html" ! -name "index.html" | while read -r file; do
-            dir=$(dirname "$file")
-            echo "Renaming '$file' -> '$dir/index.html'"
-            mv "$file" "$dir/index.html"
-          done
+          set -euo pipefail
 
-      - name: Commit and push changes
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "auto: rename uploaded html file to index.html"
-          file_pattern: 'archive/**'
+          found=false
+          # Use find with -print0 to safely handle any filename characters
+          while IFS= read -r -d '' file; do
+            dir=$(dirname "$file")
+            target="$dir/index.html"
+
+            if [ -e "$target" ]; then
+              echo "Skipping '$file' because '$target' already exists"
+              continue
+            fi
+
+            echo "Renaming '$file' -> '$target'"
+            # prefer git mv to preserve history, fall back to mv if needed
+            git mv -f "$file" "$target" || mv "$file" "$target"
+            found=true
+          done < <(find archive -type f -name "*.html" ! -name "index.html" -print0)
+
+          if [ "$found" = false ]; then
+            echo "No files to rename"
+            exit 0
+          fi
+
+      - name: Commit and push changes (only if there are changes)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A archive
+          # if there are staged changes, commit and push; otherwise exit
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "auto: rename uploaded html file to index.html"
+          git push
